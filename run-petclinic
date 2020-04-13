@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# Note: this script will copy contrast.jar and contrast_security.yaml into
+#       the target directory before running petclinic.
+
+# WARNING: CONTRAST_DIR cannot contain spaces!
+CONTRAST_DIR=./contrast
+
+# The -javaagent option activates the Contrast agent
+OPTS="-javaagent:contrast.jar"
+
+if [ ! -d target ];  then
+    echo "WARNING: No target directory present.  Please run ./dobuild"
+    exit 1
+fi
+
+pushd target
+
+# Remove any Contrast state
+rm -rf "$CONTRAST_DIR"
+mkdir "$CONTRAST_DIR"
+
+if [ -f ../contrast.config -a -x `which curl` ]; then
+    source ../contrast.config
+
+    if [ -z "$CONTRAST__URL" -o -z "$CONTRAST__ORG_ID" -o -z "$CONTRAST__API_KEY" -o -z "$CONTRAST__AUTHORIZATION" ]; then
+        echo "Incomplete configuration in contrast.config; skipping download."
+    else
+        echo ""
+        echo "*** Downloading latest agent from $CONTRAST__URL"
+
+        CONTRAST__BASEURL="$CONTRAST__URL/api/ng/$CONTRAST__ORG_ID"
+        curl --progress-bar -X GET -H "API-Key: $CONTRAST__API_KEY" -H "Authorization: $CONTRAST__AUTHORIZATION" -m 10 -o ./contrast.jar "$CONTRAST__BASEURL/agents/default/JAVA?jvm=1_5"
+    fi
+fi
+
+if [ ! -f contrast.jar ]; then
+    # If we didn't download an agent, copy one from ..
+    cp ../contrast.jar . || exit 4
+fi
+
+if [ -r ../contrast_security.yaml ]; then
+    # Grab a yaml file from .. if available.  Note that the following
+    # settings are specified via Java system properties below and will
+    # not be taken from the yaml file:
+    #     standalone_app_name
+    #     working_dir
+
+    OPTS="$OPTS -Dcontrast.config.path=./contrast_security.yaml"
+    cp ../contrast_security.yaml .
+fi
+
+# The standalone_app_name property tells the Contrast server what application
+#     to file any results under.
+# The working_dir option specifies where to put Contrast temp files and logs
+# Additional Contrast configuration options, including those used to connect
+#     to the server, come from contrast_security.yaml (if present)
+
+OPTS="$OPTS -Dcontrast.agent.java.standalone_app_name=petclinic"
+OPTS="$OPTS -Dcontrast.agent.contrast_working_dir=$CONTRAST_DIR"
+
+if [ -f contrast.jar ]; then
+    java $OPTS -jar spring-petclinic-1.5.1.?ar
+else
+    echo "Missing contrast.jar agent.  Please complete contrast.config or copy"
+    echo "contrast.jar into this directory."
+    exit 2
+fi
+
+popd

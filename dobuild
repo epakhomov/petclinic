@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Create a directory for our Maven repository
+mkdir m2
+
+docker run -it --rm --name my-maven \
+        -w /usr/src/mymaven \
+        -v "$(pwd)":/usr/src/mymaven \
+        -v "$(pwd)/m2":/root/.m2 \
+        maven:3.3-jdk-8 mvn -Dmaven.test.skip=true clean package
